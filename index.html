@@ -37,6 +37,7 @@
     <div class="ctl-group">
       <button id="btn-undo">Zug zurücksetzen</button>
       <button id="btn-draw">Stein ziehen</button>
+      <button id="btn-keep" class="primary hidden">Alle behalten</button>
       <button id="btn-end" class="primary">Zug beenden</button>
     </div>
   </div>
@@ -53,6 +54,11 @@
       <button class="opt sel" data-ai="2">2</button>
       <button class="opt" data-ai="3">3</button>
     </div>
+    <div class="choice">
+      <span>Tauschregel:</span>
+      <button class="opt wide sel" data-swap="0">Aus</button>
+      <button class="opt wide" data-swap="1">An</button>
+    </div>
     <button id="btn-start" class="primary big">Spiel beginnen</button>
     <details id="rules">
       <summary>Kurzregeln</summary>
@@ -62,6 +68,7 @@
         <li><b>Erste Auslage:</b> nur eigene neue Reihen, zusammen ≥ 30 Punkte.</li>
         <li>Danach darfst du die Auslage frei umbauen – am Ende deines Zuges muss alles gültig sein.</li>
         <li>Kannst oder willst du nicht legen, ziehst du einen Stein.</li>
+        <li><b>Tauschregel</b> (Variante): Nach dem Ziehen darfst du einen beliebigen Stein zurück in den Beutel legen.</li>
         <li>Der <b>Joker</b> ersetzt jeden Stein und zählt dessen Wert.</li>
         <li>Wer zuerst alle Steine ablegt, gewinnt.</li>
       </ul>

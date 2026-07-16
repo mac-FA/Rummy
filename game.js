@@ -28,23 +28,26 @@ function shuffle(a) {
 
 /* ---------------- Spielzustand ---------------- */
 
-let S = null;          // {pool, players, board, cur, passes, over}
+let S = null;          // {pool, players, board, cur, passes, over, swap, stale}
 let snap = null;       // Zustand bei Zugbeginn (für "Zug zurücksetzen")
 let playedIds = null;  // Steine, die der Mensch in diesem Zug aus der Ablage gelegt hat
+let discardMode = false; // Tauschregel: gezogen, jetzt darf ein Stein zurück in den Beutel
 let aiCount = 2;
+let swapRule = false;
 
 const AI_NAMES = ['Konrad', 'Beatrix', 'Wilhelm'];
 
-function newGame(numAI) {
+function newGame(numAI, swap) {
   const pool = shuffle(T.map(t => t.id));
   const players = [{ name: 'Du', ai: false, rack: pool.splice(0, 14), opened: false }];
   for (let i = 0; i < numAI; i++)
     players.push({ name: AI_NAMES[i], ai: true, rack: pool.splice(0, 14), opened: false });
-  S = { pool, players, board: [], cur: 0, passes: 0, over: false };
+  S = { pool, players, board: [], cur: 0, passes: 0, over: false, swap, stale: 0 };
   beginTurn();
 }
 
 function beginTurn() {
+  discardMode = false;
   snap = {
     board: S.board.map(s => s.slice()),
     rack: S.players[S.cur].rack.slice(),
@@ -64,6 +67,9 @@ function beginTurn() {
 function finishTurn() {
   const p = S.players[S.cur];
   if (p.rack.length === 0) { gameOver(p); return; }
+  // Patt-Sicherung: mit Tauschregel leert sich der Beutel nie —
+  // wenn sehr lange niemand legt, wird nach Punkten gewertet.
+  if (S.swap && S.stale >= S.players.length * 12) { gameOverByPoints(true); return; }
   S.cur = (S.cur + 1) % S.players.length;
   beginTurn();
 }
@@ -144,19 +150,45 @@ function drawTile() {
   }
   if (S.pool.length === 0) {
     S.passes++;
+    S.stale++;
     msg('Der Beutel ist leer — du setzt aus.');
     if (S.passes >= S.players.length) { gameOverByPoints(); return; }
     setTimeout(finishTurn, 700);
     return;
   }
   S.passes = 0;
+  S.stale++;
   const id = S.pool.pop();
   p.rack.push(id);
+  if (S.swap) {
+    discardMode = true;
+    renderAll();
+    const el = document.querySelector(`#rack .tile[data-id="${id}"]`);
+    if (el) el.classList.add('fresh');
+    msg('Stein gezogen — tippe einen Stein an, um ihn zurück in den Beutel zu legen.');
+    return;
+  }
   renderAll();
   const el = document.querySelector(`#rack .tile[data-id="${id}"]`);
   if (el) el.classList.add('fresh');
   msg('Stein gezogen.');
   setTimeout(finishTurn, 700);
+}
+
+function discardTile(id) {
+  const p = S.players[0];
+  p.rack.splice(p.rack.indexOf(id), 1);
+  S.pool.splice(Math.floor(Math.random() * (S.pool.length + 1)), 0, id);
+  discardMode = false;
+  renderAll();
+  msg('Stein in den Beutel zurückgelegt.');
+  setTimeout(finishTurn, 500);
+}
+
+function keepAll() {
+  discardMode = false;
+  renderAll();
+  finishTurn();
 }
 
 function endTurn() {
@@ -189,6 +221,7 @@ function endTurn() {
     msg(`Ausgelegt mit ${pts} Punkten!`);
   }
   S.passes = 0;
+  S.stale = 0;
   finishTurn();
 }
 
@@ -349,13 +382,17 @@ function aiTurn() {
   const played = p.rack.length < before;
   if (played) {
     S.passes = 0;
+    S.stale = 0;
     msg(`${p.name} legt ${before - p.rack.length} Stein${before - p.rack.length > 1 ? 'e' : ''}.`);
   } else if (S.pool.length > 0) {
     S.passes = 0;
+    S.stale++;
     p.rack.push(S.pool.pop());
-    msg(`${p.name} zieht einen Stein.`);
+    const swapped = S.swap ? aiMaybeDiscard(p) : false;
+    msg(swapped ? `${p.name} zieht und tauscht einen Stein.` : `${p.name} zieht einen Stein.`);
   } else {
     S.passes++;
+    S.stale++;
     msg(`${p.name} setzt aus.`);
     if (S.passes >= S.players.length) { renderAll(); gameOverByPoints(); return; }
   }
@@ -366,6 +403,43 @@ function aiTurn() {
     if (el) el.classList.add('fresh');
   }
   setTimeout(finishTurn, played ? 1300 : 900);
+}
+
+// Tauschregel: den nutzlosesten Stein zurück in den Beutel legen,
+// aber nur, wenn er wirklich kaum Kombinationschancen hat.
+function aiMaybeDiscard(p) {
+  let worst = null, worstScore = Infinity;
+  for (const id of p.rack) {
+    const t = T[id];
+    if (t.joker) continue;
+    let score = 0;
+    for (const other of p.rack) {
+      if (other === id) continue;
+      const o = T[other];
+      if (o.joker) { score += 0.5; continue; }
+      if (o.n === t.n && o.c !== t.c) score += 2;              // Gruppen-Partner
+      if (o.c === t.c && Math.abs(o.n - t.n) === 1) score += 2; // Reihen-Nachbar
+      if (o.c === t.c && Math.abs(o.n - t.n) === 2) score += 1; // Lücken-Nachbar
+      if (o.n === t.n && o.c === t.c) score -= 0.5;             // Duplikat
+    }
+    if (p.opened) {
+      for (const s of S.board) {
+        let fits = false;
+        for (const pos of [0, s.length]) {
+          const test = s.slice();
+          test.splice(pos, 0, id);
+          if (setInfo(test).valid) { fits = true; break; }
+        }
+        if (fits) { score += 3; break; }
+      }
+    }
+    score -= t.n * 0.05; // hohe Steine im Zweifel lieber abgeben
+    if (score < worstScore) { worstScore = score; worst = id; }
+  }
+  if (worst === null || worstScore >= 2) return false;
+  p.rack.splice(p.rack.indexOf(worst), 1);
+  S.pool.splice(Math.floor(Math.random() * (S.pool.length + 1)), 0, worst);
+  return true;
 }
 
 /* ---------------- Spielende ---------------- */
@@ -380,12 +454,12 @@ function gameOver(winner) {
   );
 }
 
-function gameOverByPoints() {
+function gameOverByPoints(stale) {
   S.over = true;
   let winner = S.players[0];
   for (const p of S.players) if (rackPoints(p) < rackPoints(winner)) winner = p;
   showEnd(
-    (winner.ai ? `${winner.name} gewinnt` : 'Du gewinnst') + ' nach Punkten',
+    (stale ? 'Festgefahren — ' : '') + (winner.ai ? `${winner.name} gewinnt` : 'Du gewinnst') + ' nach Punkten',
     winner,
   );
 }
@@ -459,9 +533,11 @@ function renderTop() {
 
 function renderControls() {
   const my = S.cur === 0 && !S.over;
-  document.getElementById('btn-undo').disabled = !my || (!boardChanged() && playedIds.size === 0);
-  document.getElementById('btn-draw').disabled = !my;
-  document.getElementById('btn-end').disabled = !my;
+  document.getElementById('btn-undo').disabled = !my || discardMode || (!boardChanged() && playedIds.size === 0);
+  document.getElementById('btn-draw').disabled = !my || discardMode;
+  document.getElementById('btn-end').disabled = !my || discardMode;
+  document.getElementById('btn-keep').classList.toggle('hidden', !discardMode);
+  document.body.classList.toggle('discard', discardMode);
   const p = S.players[0];
   const endBtn = document.getElementById('btn-end');
   if (my && !p.opened && playedIds.size > 0)
@@ -499,6 +575,11 @@ function findTileAt(x, y) {
 
 document.addEventListener('pointerdown', (e) => {
   if (!S || S.over || S.cur !== 0) return;
+  if (discardMode) {
+    const rackTile = e.target.closest('#rack .tile');
+    if (rackTile) discardTile(+rackTile.dataset.id);
+    return;
+  }
   const tEl = e.target.closest('.tile');
   if (!tEl || tEl.classList.contains('ghost')) return;
   const id = +tEl.dataset.id;
@@ -637,19 +718,21 @@ document.getElementById('btn-sort-num').addEventListener('click', () => sortRack
 document.getElementById('btn-sort-col').addEventListener('click', () => sortRack(false));
 document.getElementById('btn-undo').addEventListener('click', undoTurn);
 document.getElementById('btn-draw').addEventListener('click', drawTile);
+document.getElementById('btn-keep').addEventListener('click', keepAll);
 document.getElementById('btn-end').addEventListener('click', endTurn);
 
 document.querySelectorAll('.choice .opt').forEach(b => {
   b.addEventListener('click', () => {
-    document.querySelectorAll('.choice .opt').forEach(x => x.classList.remove('sel'));
+    b.parentElement.querySelectorAll('.opt').forEach(x => x.classList.remove('sel'));
     b.classList.add('sel');
-    aiCount = +b.dataset.ai;
+    if (b.dataset.ai) aiCount = +b.dataset.ai;
+    if (b.dataset.swap !== undefined) swapRule = b.dataset.swap === '1';
   });
 });
 
 document.getElementById('btn-start').addEventListener('click', () => {
   document.getElementById('overlay').classList.remove('show');
-  newGame(aiCount);
+  newGame(aiCount, swapRule);
 });
 
 document.getElementById('btn-again').addEventListener('click', () => {
