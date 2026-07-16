@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Rummy</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='4' width='52' height='56' rx='10' fill='%23f5ecd7'/%3E%3Ctext x='32' y='42' font-family='Georgia' font-size='34' font-weight='bold' fill='%23b23a32' text-anchor='middle'%3E7%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -23,8 +23,8 @@
 
 <main id="board" aria-label="Spielfeld"></main>
 
-<div id="dropzone">
-  <svg viewBox="0 0 64 64" class="dz-pouch" aria-hidden="true">
+<div id="dropzone" hidden>
+  <svg viewBox="0 0 64 64" width="88" height="88" class="dz-pouch" aria-hidden="true">
     <path d="M24 13 Q32 7 40 13 L36 21 Q32 19 28 21 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
     <path d="M28 21 Q11 35 16 48 Q22 58 32 58 Q42 58 48 48 Q53 35 36 21 Q32 19 28 21 Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
     <path d="M26 20 L38 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
@@ -91,6 +91,6 @@
   </div>
 </div>
 
-<script src="game.js"></script>
+<script src="game.js?v=4"></script>
 </body>
 </html>
