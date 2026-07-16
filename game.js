@@ -165,7 +165,7 @@ function drawTile() {
     renderAll();
     const el = document.querySelector(`#rack .tile[data-id="${id}"]`);
     if (el) el.classList.add('fresh');
-    msg('Stein gezogen — tippe einen Stein an, um ihn zurück in den Beutel zu legen.');
+    msg('Stein gezogen — ziehe einen Stein ins goldene Feld oder behalte alle.');
     return;
   }
   renderAll();
@@ -538,6 +538,7 @@ function renderControls() {
   document.getElementById('btn-end').disabled = !my || discardMode;
   document.getElementById('btn-keep').classList.toggle('hidden', !discardMode);
   document.body.classList.toggle('discard', discardMode);
+  positionDropzone();
   const p = S.players[0];
   const endBtn = document.getElementById('btn-end');
   if (my && !p.opened && playedIds.size > 0)
@@ -547,6 +548,18 @@ function renderControls() {
 }
 
 function renderAll() { renderBoard(); renderRack(); renderTop(); renderControls(); }
+
+// Wegwerf-Feld (Tauschregel) großzügig über das Spielfeld legen
+function positionDropzone() {
+  if (!discardMode) return;
+  const dz = document.getElementById('dropzone');
+  const r = boardEl.getBoundingClientRect();
+  dz.style.left = (r.left + 12) + 'px';
+  dz.style.top = (r.top + 8) + 'px';
+  dz.style.width = (r.width - 24) + 'px';
+  dz.style.height = (r.height - 16) + 'px';
+}
+window.addEventListener('resize', positionDropzone);
 
 let msgTimer = null;
 function msg(text, isErr) {
@@ -570,16 +583,12 @@ function findTileAt(x, y) {
     bset: el.closest('.bset'),
     rack: el.closest('#rackwrap'),
     board: el.closest('#board'),
+    dropzone: el.closest('#dropzone'),
   };
 }
 
 document.addEventListener('pointerdown', (e) => {
   if (!S || S.over || S.cur !== 0) return;
-  if (discardMode) {
-    const rackTile = e.target.closest('#rack .tile');
-    if (rackTile) discardTile(+rackTile.dataset.id);
-    return;
-  }
   const tEl = e.target.closest('.tile');
   if (!tEl || tEl.classList.contains('ghost')) return;
   const id = +tEl.dataset.id;
@@ -587,7 +596,10 @@ document.addEventListener('pointerdown', (e) => {
   const p = S.players[0];
 
   let src;
-  if (inRack) src = 'rack';
+  if (discardMode) {
+    if (!inRack) return;   // im Tausch-Moment sind nur Ablage-Steine beweglich
+    src = 'discard';
+  } else if (inRack) src = 'rack';
   else {
     const setIdx = +tEl.closest('.bset').dataset.idx;
     src = S.board[setIdx];
@@ -620,6 +632,10 @@ document.addEventListener('pointermove', (e) => {
 
   document.querySelectorAll('.droptarget').forEach(el => el.classList.remove('droptarget'));
   const hit = findTileAt(e.clientX, e.clientY);
+  if (drag.src === 'discard') {
+    if (hit.dropzone) hit.dropzone.classList.add('droptarget');
+    return;
+  }
   if (hit.bset) hit.bset.classList.add('droptarget');
   else if (hit.rack) document.getElementById('rack').classList.add('droptarget');
   else if (hit.board) boardEl.classList.add('droptarget');
@@ -634,6 +650,13 @@ document.addEventListener('pointerup', (e) => {
 
   const hit = findTileAt(e.clientX, e.clientY);
   const p = S.players[0];
+
+  if (src === 'discard') {
+    drag = null;
+    if (hit.dropzone) discardTile(id);
+    else renderAll();
+    return;
+  }
 
   const removeFromSrc = () => {
     if (src === 'rack') p.rack.splice(p.rack.indexOf(id), 1);
