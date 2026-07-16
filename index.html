@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Rummy</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='4' width='52' height='56' rx='10' fill='%23f5ecd7'/%3E%3Ctext x='32' y='42' font-family='Georgia' font-size='34' font-weight='bold' fill='%23b23a32' text-anchor='middle'%3E7%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div id="brand">
+    <h1>Rummy</h1>
+    <span class="sub">Das Spiel mit den Steinen</span>
+  </div>
+  <div id="opponents"></div>
+  <div id="poolinfo" title="Steine im Beutel">
+    <span class="pouch">◆</span>
+    <span id="poolcount">–</span>
+  </div>
+</header>
+
+<main id="board" aria-label="Spielfeld"></main>
+
+<div id="msgbar"><span id="msg"></span></div>
+
+<footer id="bottom">
+  <div id="rackwrap">
+    <div id="rack" aria-label="Deine Steine"></div>
+  </div>
+  <div id="controls">
+    <div class="ctl-group">
+      <button id="btn-sort-num" title="Nach Zahlen sortieren (7-7-7)">7·7·7</button>
+      <button id="btn-sort-col" title="Nach Farben sortieren (1-2-3)">1·2·3</button>
+    </div>
+    <div class="ctl-group">
+      <button id="btn-undo">Zug zurücksetzen</button>
+      <button id="btn-draw">Stein ziehen</button>
+      <button id="btn-end" class="primary">Zug beenden</button>
+    </div>
+  </div>
+</footer>
+
+<div id="overlay" class="show">
+  <div class="panel" id="start-panel">
+    <h2>Rummy</h2>
+    <p class="lede">106 Steine, vier Farben, zwei Joker.<br>
+    Lege Gruppen und Reihen – die erste Auslage braucht<br>mindestens <b>30 Punkte</b> aus eigener Hand.</p>
+    <div class="choice">
+      <span>Gegner:</span>
+      <button class="opt" data-ai="1">1</button>
+      <button class="opt sel" data-ai="2">2</button>
+      <button class="opt" data-ai="3">3</button>
+    </div>
+    <button id="btn-start" class="primary big">Spiel beginnen</button>
+    <details id="rules">
+      <summary>Kurzregeln</summary>
+      <ul>
+        <li><b>Gruppe:</b> 3–4 gleiche Zahlen in verschiedenen Farben.</li>
+        <li><b>Reihe:</b> mind. 3 aufeinanderfolgende Zahlen einer Farbe.</li>
+        <li><b>Erste Auslage:</b> nur eigene neue Reihen, zusammen ≥ 30 Punkte.</li>
+        <li>Danach darfst du die Auslage frei umbauen – am Ende deines Zuges muss alles gültig sein.</li>
+        <li>Kannst oder willst du nicht legen, ziehst du einen Stein.</li>
+        <li>Der <b>Joker</b> ersetzt jeden Stein und zählt dessen Wert.</li>
+        <li>Wer zuerst alle Steine ablegt, gewinnt.</li>
+      </ul>
+    </details>
+  </div>
+  <div class="panel hidden" id="end-panel">
+    <h2 id="end-title"></h2>
+    <div id="end-detail"></div>
+    <button id="btn-again" class="primary big">Neue Runde</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
