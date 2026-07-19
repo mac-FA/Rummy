@@ -14,7 +14,8 @@
      Kontrast auf Elfenbein, zusätzlich trägt jede Farbe ein eigenes Symbol. */
   --t-rot: #b41545;
   --t-blau: #1c5aa8;
-  --t-gelb: #8f5a00;
+  --t-gelb: #dcae0a;
+  --t-gelb-kontur: #6b4a00;
   --t-schwarz: #232120;
   --ts: clamp(38px, 5.4vw, 56px);          /* Steinbreite */
   --th: calc(var(--ts) * 1.38);            /* Steinhöhe  */
@@ -219,6 +220,20 @@ body::before {
 .tile.c1 .num, .tile.c1 .pip { color: var(--t-blau); }
 .tile.c2 .num, .tile.c2 .pip { color: var(--t-gelb); }
 .tile.c3 .num, .tile.c3 .pip { color: var(--t-schwarz); }
+
+/* Gelb ist hell — eine dunkle Kontur hält es auf Elfenbein scharf lesbar */
+.tile.c2 .num {
+  text-shadow:
+     1px 0 0 var(--t-gelb-kontur), -1px 0 0 var(--t-gelb-kontur),
+     0 1px 0 var(--t-gelb-kontur),  0 -1px 0 var(--t-gelb-kontur),
+     1px 1px 0 var(--t-gelb-kontur), -1px 1px 0 var(--t-gelb-kontur),
+     1px -1px 0 var(--t-gelb-kontur), -1px -1px 0 var(--t-gelb-kontur);
+}
+.tile.c2 .pip {
+  text-shadow:
+     .5px 0 0 var(--t-gelb-kontur), -.5px 0 0 var(--t-gelb-kontur),
+     0 .5px 0 var(--t-gelb-kontur), 0 -.5px 0 var(--t-gelb-kontur);
+}
 
 .tile.joker .num {
   font-size: calc(var(--ts) * .72);

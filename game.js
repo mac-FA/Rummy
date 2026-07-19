@@ -656,16 +656,48 @@ function err(text) { msg(text, true); }
 
 let drag = null; // {id, src:'rack'|setArray, ghost, moved}
 
-function findTileAt(x, y) {
-  const el = document.elementFromPoint(x, y);
-  if (!el) return {};
-  return {
-    tile: el.closest('.tile:not(.ghost)'),
-    bset: el.closest('.bset'),
-    rack: el.closest('#rackwrap'),
-    board: el.closest('#board'),
-    dropzone: el.closest('#dropzone'),
-  };
+const DROP_TOL = 44;   // Fangradius um Reihen und Ablage — Anlegen soll nicht fummelig sein
+const JOKER_TOL = 16;  // Fangradius um einen Joker beim Auslösen
+
+function distToRect(el, x, y) {
+  const r = el.getBoundingClientRect();
+  const dx = x < r.left ? r.left - x : (x > r.right ? x - r.right : 0);
+  const dy = y < r.top ? r.top - y : (y > r.bottom ? y - r.bottom : 0);
+  return Math.hypot(dx, dy);
+}
+
+// Wohin fällt der Stein? Reihen fangen großzügig, damit Anlegen leicht geht.
+function dropTargetAt(x, y) {
+  const rackWrap = document.getElementById('rackwrap');
+  if (discardMode) {
+    const dz = document.getElementById('dropzone');
+    return distToRect(dz, x, y) === 0 ? { kind: 'dropzone' } : null;
+  }
+  if (distToRect(rackWrap, x, y) === 0) return { kind: 'rack' };
+
+  let nearest = null, bestD = DROP_TOL;
+  for (const el of boardEl.querySelectorAll('.bset')) {
+    const d = distToRect(el, x, y);
+    if (d <= bestD) { bestD = d; nearest = el; }
+  }
+  if (nearest) return { kind: 'set', el: nearest };
+
+  if (distToRect(boardEl, x, y) === 0) return { kind: 'board' };
+  if (distToRect(rackWrap, x, y) <= DROP_TOL) return { kind: 'rack' };
+  return null;
+}
+
+// Joker in Reichweite? direct = genau darauf getroffen
+function jokerHitAt(x, y) {
+  let best = null, bestD = JOKER_TOL;
+  S.board.forEach((s, si) => s.forEach((tid, i) => {
+    if (!T[tid].joker) return;
+    const el = boardEl.querySelector(`.bset[data-idx="${si}"] .tile[data-id="${tid}"]`);
+    if (!el) return;
+    const d = distToRect(el, x, y);
+    if (d <= bestD) { bestD = d; best = { set: s, idx: i, direct: d === 0 }; }
+  }));
+  return best;
 }
 
 document.addEventListener('pointerdown', (e) => {
@@ -729,14 +761,12 @@ document.addEventListener('pointermove', (e) => {
   drag.ghost.style.top = (e.clientY - drag.dy) + 'px';
 
   document.querySelectorAll('.droptarget').forEach(el => el.classList.remove('droptarget'));
-  const hit = findTileAt(e.clientX, e.clientY);
-  if (drag.src === 'discard') {
-    if (hit.dropzone) hit.dropzone.classList.add('droptarget');
-    return;
-  }
-  if (hit.bset) hit.bset.classList.add('droptarget');
-  else if (hit.rack) document.getElementById('rack').classList.add('droptarget');
-  else if (hit.board) boardEl.classList.add('droptarget');
+  const t = dropTargetAt(e.clientX, e.clientY);
+  if (!t) return;
+  if (t.kind === 'dropzone') document.getElementById('dropzone').classList.add('droptarget');
+  else if (t.kind === 'set') t.el.classList.add('droptarget');
+  else if (t.kind === 'rack') document.getElementById('rack').classList.add('droptarget');
+  else if (t.kind === 'board') boardEl.classList.add('droptarget');
 });
 
 document.addEventListener('pointerup', (e) => {
@@ -747,12 +777,13 @@ document.addEventListener('pointerup', (e) => {
   document.querySelectorAll('.droptarget').forEach(el => el.classList.remove('droptarget'));
   clearJokerHints();
 
-  const hit = findTileAt(e.clientX, e.clientY);
+  const x = e.clientX, y = e.clientY;
+  const t = dropTargetAt(x, y);
   const p = S.players[0];
 
   if (src === 'discard') {
     drag = null;
-    if (hit.dropzone) discardTile(id);
+    if (t && t.kind === 'dropzone') discardTile(id);
     else renderAll();
     return;
   }
@@ -762,31 +793,46 @@ document.addEventListener('pointerup', (e) => {
     else src.splice(src.indexOf(id), 1);
   };
   const insertIndex = (containerEl, arr) => {
-    // Einfügeposition anhand der X-Mitte der vorhandenen Steine
     const tiles = [...containerEl.querySelectorAll('.tile:not(.dragging)')];
-    let idx = 0;
+    if (!tiles.length) return 0;
+    // Steine zu Zeilen bündeln (die Ablage bricht um)
+    const rows = [];
     for (const el of tiles) {
       const r = el.getBoundingClientRect();
-      if (e.clientY > r.bottom) { idx++; continue; }         // frühere Zeile (umgebrochene Ablage)
-      if (e.clientY >= r.top - 6 && e.clientX > r.left + r.width / 2) idx++;
-      else if (e.clientY >= r.top - 6) break;
+      let row = rows.find(rw => Math.abs(rw.top - r.top) < r.height * 0.5);
+      if (!row) { row = { top: r.top, bottom: r.bottom, items: [] }; rows.push(row); }
+      row.items.push(r);
+    }
+    rows.sort((a, b) => a.top - b.top);
+    // die vertikal nächstgelegene Zeile wählen — auch oberhalb/unterhalb greifen
+    let row = rows[0], bestD = Infinity;
+    for (const rw of rows) {
+      const d = y < rw.top ? rw.top - y : (y > rw.bottom ? y - rw.bottom : 0);
+      if (d < bestD) { bestD = d; row = rw; }
+    }
+    let idx = 0;
+    for (const rw of rows) { if (rw === row) break; idx += rw.items.length; }
+    for (const r of row.items) {
+      if (x > r.left + r.width / 2) idx++;
+      else break;
     }
     return Math.min(idx, arr.length);
   };
 
   // Joker auslösen: eigenen Stein auf den Joker ziehen, für den er einsprang
-  if (S.jokerSwap && src === 'rack' && hit.bset && hit.tile) {
-    const target = S.board[+hit.bset.dataset.idx];
-    const jid = +hit.tile.dataset.id;
-    const jidx = target.indexOf(jid);
-    if (jidx >= 0 && T[jid].joker) {
+  if (S.jokerSwap && src === 'rack') {
+    const jh = jokerHitAt(x, y);
+    const fits = jh && canReplaceJoker(jh.set, jh.idx, id);
+    // knapp daneben und unpassend? Dann normal einsortieren statt meckern.
+    if (jh && (fits || jh.direct)) {
       if (!p.opened) {
         err('Erst nach deiner ersten Auslage darfst du einen Joker auslösen.');
-      } else if (!canReplaceJoker(target, jidx, id)) {
+      } else if (!fits) {
         err('Dafür ist dieser Joker nicht eingesprungen — Farbe oder Zahl passt nicht.');
       } else {
+        const jid = jh.set[jh.idx];
         p.rack.splice(p.rack.indexOf(id), 1);
-        target[jidx] = id;
+        jh.set[jh.idx] = id;
         playedIds.add(id);
         p.rack.push(jid);
         freedJokers.add(jid);
@@ -800,19 +846,17 @@ document.addEventListener('pointerup', (e) => {
 
   let done = false;
 
-  if (hit.bset) {
-    const target = S.board[+hit.bset.dataset.idx];
-    if (!p.opened && src === 'rack' && !target.every(x => playedIds.has(x))) {
+  if (t && t.kind === 'set') {
+    const target = S.board[+t.el.dataset.idx];
+    if (!p.opened && src === 'rack' && !target.every(tid => playedIds.has(tid))) {
       err('Vor der ersten Auslage darfst du nur an deine eigenen neuen Reihen anlegen.');
     } else {
       removeFromSrc();
-      const filtered = target === src ? target : target;
-      const idx = insertIndex(hit.bset, filtered);
-      target.splice(idx, 0, id);
+      target.splice(insertIndex(t.el, target), 0, id);
       if (src === 'rack') playedIds.add(id);
       done = true;
     }
-  } else if (hit.rack) {
+  } else if (t && t.kind === 'rack') {
     if (src === 'rack') {
       removeFromSrc();
       p.rack.splice(insertIndex(rackEl, p.rack), 0, id);
@@ -825,7 +869,7 @@ document.addEventListener('pointerup', (e) => {
     } else {
       err('Steine vom Tisch dürfen nicht zurück auf die Ablage.');
     }
-  } else if (hit.board) {
+  } else if (t && t.kind === 'board') {
     removeFromSrc();
     S.board.push([id]);
     if (src === 'rack') playedIds.add(id);
