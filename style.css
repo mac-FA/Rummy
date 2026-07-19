@@ -10,10 +10,12 @@
   --ivory-1: #fdf8ec;
   --ivory-2: #efe4cb;
   --ivory-3: #ddcba6;
-  --t-rot: #b23a32;
-  --t-blau: #2f5d9e;
-  --t-gelb: #c07f14;
-  --t-schwarz: #33302b;
+  /* Farben auf Deuteranopie/Protanopie geprüft: jede Ziffer hat mind. 4,6:1
+     Kontrast auf Elfenbein, zusätzlich trägt jede Farbe ein eigenes Symbol. */
+  --t-rot: #b41545;
+  --t-blau: #1c5aa8;
+  --t-gelb: #8f5a00;
+  --t-schwarz: #232120;
   --ts: clamp(38px, 5.4vw, 56px);          /* Steinbreite */
   --th: calc(var(--ts) * 1.38);            /* Steinhöhe  */
 }
@@ -208,9 +210,10 @@ body::before {
 }
 .tile .pip {
   position: absolute;
-  bottom: calc(var(--ts) * .16);
-  font-size: calc(var(--ts) * .2);
-  opacity: .75;
+  bottom: calc(var(--ts) * .14);
+  font-size: calc(var(--ts) * .24);
+  line-height: 1;
+  opacity: .9;
 }
 .tile.c0 .num, .tile.c0 .pip { color: var(--t-rot); }
 .tile.c1 .num, .tile.c1 .pip { color: var(--t-blau); }
@@ -229,6 +232,22 @@ body::before {
 }
 
 .tile.mine { outline: 2px solid rgba(201,163,92,.55); outline-offset: -2px; }
+
+/* Joker, den der gezogene Stein auslösen könnte */
+.tile.jokerhint {
+  animation: jokerpulse 1.1s ease-in-out infinite;
+  cursor: copy;
+}
+@keyframes jokerpulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(201,163,92,.5), 0 3px 7px rgba(0,0,0,.5); }
+  50%      { box-shadow: 0 0 0 3px var(--gold), 0 0 22px rgba(201,163,92,.95), 0 3px 7px rgba(0,0,0,.5); }
+}
+
+/* ausgelöster Joker auf der Ablage — muss noch zurück auf den Tisch */
+.tile.freed {
+  outline: 2px dashed var(--gold);
+  outline-offset: -3px;
+}
 
 .tile.ghost {
   position: fixed;

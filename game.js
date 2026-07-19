@@ -18,6 +18,10 @@ const T = [];                       // T[id] = {id, c, n, joker}
   T.push({ id: id++, c: 3, n: 0, joker: true });
 })();
 
+// Jede Farbe trägt zusätzlich ein eigenes Symbol — so bleiben die Steine
+// auch bei Rot-Grün-Schwäche eindeutig unterscheidbar.
+const PIPS = ['◆', '●', '▲', '■'];
+
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -32,22 +36,25 @@ let S = null;          // {pool, players, board, cur, passes, over, swap, stale}
 let snap = null;       // Zustand bei Zugbeginn (für "Zug zurücksetzen")
 let playedIds = null;  // Steine, die der Mensch in diesem Zug aus der Ablage gelegt hat
 let discardMode = false; // Tauschregel: gezogen, jetzt darf ein Stein zurück in den Beutel
+let freedJokers = new Set(); // in diesem Zug ausgelöste Joker — müssen wieder auf den Tisch
 let aiCount = 2;
 let swapRule = false;
+let jokerRule = false;
 
 const AI_NAMES = ['Konrad', 'Beatrix', 'Wilhelm'];
 
-function newGame(numAI, swap) {
+function newGame(numAI, swap, joker) {
   const pool = shuffle(T.map(t => t.id));
   const players = [{ name: 'Du', ai: false, rack: pool.splice(0, 14), opened: false }];
   for (let i = 0; i < numAI; i++)
     players.push({ name: AI_NAMES[i], ai: true, rack: pool.splice(0, 14), opened: false });
-  S = { pool, players, board: [], cur: 0, passes: 0, over: false, swap, stale: 0 };
+  S = { pool, players, board: [], cur: 0, passes: 0, over: false, swap, jokerSwap: joker, stale: 0 };
   beginTurn();
 }
 
 function beginTurn() {
   discardMode = false;
+  freedJokers = new Set();
   snap = {
     board: S.board.map(s => s.slice()),
     rack: S.players[S.cur].rack.slice(),
@@ -79,17 +86,16 @@ function finishTurn() {
    Reihe:  mind. 3 aufeinanderfolgende Zahlen einer Farbe (Reihenfolge im Array).
    Joker zählen als der ersetzte Stein.                                    */
 
-function setInfo(ids) {
-  if (ids.length < 3) return { valid: false, value: 0 };
-  const ts = ids.map(id => T[id]);
+function setInfoT(ts) {
+  if (ts.length < 3) return { valid: false, value: 0 };
   const nonJ = ts.filter(t => !t.joker);
   let group = null, run = null;
 
-  if (ids.length <= 4 && nonJ.length >= 1) {
+  if (ts.length <= 4 && nonJ.length >= 1) {
     const nums = new Set(nonJ.map(t => t.n));
     const cols = new Set(nonJ.map(t => t.c));
     if (nums.size === 1 && cols.size === nonJ.length)
-      group = { valid: true, value: nonJ[0].n * ids.length };
+      group = { valid: true, value: nonJ[0].n * ts.length };
   }
 
   const cols = new Set(nonJ.map(t => t.c));
@@ -101,15 +107,35 @@ function setInfo(ids) {
       if (base === null) base = b;
       else if (b !== base) ok = false;
     });
-    if (ok && base >= 1 && base + ids.length - 1 <= 13) {
+    if (ok && base >= 1 && base + ts.length - 1 <= 13) {
       let v = 0;
-      for (let i = 0; i < ids.length; i++) v += base + i;
+      for (let i = 0; i < ts.length; i++) v += base + i;
       run = { valid: true, value: v };
     }
   }
 
   if (group && run) return { valid: true, value: Math.max(group.value, run.value) };
   return group || run || { valid: false, value: 0 };
+}
+
+function setInfo(ids) { return setInfoT(ids.map(id => T[id])); }
+
+// Wofür ist der Joker an Position i eingesprungen? Passt der Stein dorthin,
+// ohne dass eine Farbe doppelt vorkommt oder die Reihe bricht?
+function canReplaceJoker(s, i, id) {
+  if (T[id].joker || !T[s[i]].joker) return false;
+  const ts = s.map(x => T[x]);
+  ts[i] = T[id];
+  return setInfoT(ts).valid;
+}
+
+function canAppend(s, id) {
+  for (const pos of [s.length, 0]) {
+    const test = s.slice();
+    test.splice(pos, 0, id);
+    if (setInfo(test).valid) return pos;
+  }
+  return -1;
 }
 
 function boardAllValid() {
@@ -138,6 +164,7 @@ function undoTurn() {
   S.board = snap.board.map(s => s.slice());
   S.players[S.cur].rack = snap.rack.slice();
   playedIds = new Set();
+  freedJokers = new Set();
   renderAll();
   msg('Zug zurückgesetzt.');
 }
@@ -198,6 +225,12 @@ function endTurn() {
     err('Auf dem Tisch liegt eine ungültige Reihe.');
     renderBoard();
     return;
+  }
+  for (const jid of freedJokers) {
+    if (p.rack.includes(jid)) {
+      err('Der ausgelöste Joker muss noch in diesem Zug wieder auf den Tisch.');
+      return;
+    }
   }
   if (playedIds.size === 0) {
     if (boardChanged()) { err('Du hast nur umgebaut — lege mindestens einen eigenen Stein oder setze zurück.'); return; }
@@ -347,11 +380,13 @@ function aiTurn() {
       p.opened = true;
     }
   } else {
+    // 0) Joker vom Tisch auslösen, wenn er sofort wieder verwendet werden kann
+    const gotJoker = S.jokerSwap ? aiTryJokerSwap(p, fresh) : false;
     // 1) komplette Reihen aus der Hand legen (Joker nur bei kleiner Hand)
     let go = true;
     while (go) {
       go = false;
-      const allowJ = p.rack.length <= 5;
+      const allowJ = gotJoker || p.rack.length <= 5;
       const cands = genMelds(p.rack, allowJ).sort((a, b) => b.value - a.value);
       if (cands.length) { playMeld(cands[0].ids); go = true; }
     }
@@ -403,6 +438,48 @@ function aiTurn() {
     if (el) el.classList.add('fresh');
   }
   setTimeout(finishTurn, played ? 1300 : 900);
+}
+
+// Joker-Regel: einen Joker vom Tisch holen — aber nur, wenn er im selben Zug
+// sofort wieder untergebracht werden kann. Sonst wird der Tausch zurückgenommen.
+function aiTryJokerSwap(p, fresh) {
+  for (const s of S.board) {
+    for (let i = 0; i < s.length; i++) {
+      const jokerId = s[i];
+      if (!T[jokerId].joker) continue;
+      for (const id of p.rack) {
+        if (!canReplaceJoker(s, i, id)) continue;
+        s[i] = id;                                   // testweise auslösen
+        const rackAfter = p.rack.filter(x => x !== id);
+        let placed = false;
+
+        for (const t of S.board) {                   // Joker woanders anlegen
+          const pos = canAppend(t, jokerId);
+          if (pos >= 0) { t.splice(pos, 0, jokerId); placed = true; break; }
+        }
+        if (!placed) {                               // oder neue Reihe damit
+          const m = genMelds(rackAfter.concat(jokerId), true)
+            .filter(x => x.ids.includes(jokerId))
+            .sort((a, b) => b.value - a.value)[0];
+          if (m) {
+            S.board.push(m.ids.slice());
+            for (const x of m.ids)
+              if (x !== jokerId) rackAfter.splice(rackAfter.indexOf(x), 1);
+            fresh.push(...m.ids);
+            placed = true;
+          }
+        }
+
+        if (placed) {
+          p.rack = rackAfter;
+          fresh.push(id, jokerId);
+          return true;
+        }
+        s[i] = jokerId;                              // rückgängig
+      }
+    }
+  }
+  return false;
 }
 
 // Tauschregel: den nutzlosesten Stein zurück in den Beutel legen,
@@ -492,7 +569,7 @@ function tileEl(id, mine) {
   el.dataset.id = id;
   el.innerHTML = t.joker
     ? `<span class="num">☺</span>`
-    : `<span class="num">${t.n}</span><span class="pip">◆</span>`;
+    : `<span class="num">${t.n}</span><span class="pip">${PIPS[t.c]}</span>`;
   return el;
 }
 
@@ -515,7 +592,11 @@ function renderBoard() {
 
 function renderRack() {
   rackEl.innerHTML = '';
-  for (const id of S.players[0].rack) rackEl.appendChild(tileEl(id, false));
+  for (const id of S.players[0].rack) {
+    const el = tileEl(id, false);
+    if (freedJokers.has(id)) el.classList.add('freed');
+    rackEl.appendChild(el);
+  }
 }
 
 function renderTop() {
@@ -622,8 +703,25 @@ document.addEventListener('pointerdown', (e) => {
   tEl.classList.add('dragging');
 
   drag = { id, src, ghost, el: tEl, dx: e.clientX - r.left, dy: e.clientY - r.top };
+  markJokerHints(id, src);
   e.preventDefault();
 });
+
+// Joker auf dem Tisch aufleuchten lassen, die dieser Stein auslösen könnte
+function markJokerHints(id, src) {
+  if (!S.jokerSwap || src !== 'rack' || !S.players[0].opened) return;
+  S.board.forEach((s, si) => {
+    s.forEach((tid, i) => {
+      if (!T[tid].joker || !canReplaceJoker(s, i, id)) return;
+      const el = document.querySelector(`#board .bset[data-idx="${si}"] .tile[data-id="${tid}"]`);
+      if (el) el.classList.add('jokerhint');
+    });
+  });
+}
+
+function clearJokerHints() {
+  document.querySelectorAll('.jokerhint').forEach(el => el.classList.remove('jokerhint'));
+}
 
 document.addEventListener('pointermove', (e) => {
   if (!drag) return;
@@ -647,6 +745,7 @@ document.addEventListener('pointerup', (e) => {
   drag.ghost.remove();
   drag.el.classList.remove('dragging');
   document.querySelectorAll('.droptarget').forEach(el => el.classList.remove('droptarget'));
+  clearJokerHints();
 
   const hit = findTileAt(e.clientX, e.clientY);
   const p = S.players[0];
@@ -674,6 +773,30 @@ document.addEventListener('pointerup', (e) => {
     }
     return Math.min(idx, arr.length);
   };
+
+  // Joker auslösen: eigenen Stein auf den Joker ziehen, für den er einsprang
+  if (S.jokerSwap && src === 'rack' && hit.bset && hit.tile) {
+    const target = S.board[+hit.bset.dataset.idx];
+    const jid = +hit.tile.dataset.id;
+    const jidx = target.indexOf(jid);
+    if (jidx >= 0 && T[jid].joker) {
+      if (!p.opened) {
+        err('Erst nach deiner ersten Auslage darfst du einen Joker auslösen.');
+      } else if (!canReplaceJoker(target, jidx, id)) {
+        err('Dafür ist dieser Joker nicht eingesprungen — Farbe oder Zahl passt nicht.');
+      } else {
+        p.rack.splice(p.rack.indexOf(id), 1);
+        target[jidx] = id;
+        playedIds.add(id);
+        p.rack.push(jid);
+        freedJokers.add(jid);
+        msg('Joker ausgelöst — er muss noch in diesem Zug wieder auf den Tisch.');
+      }
+      drag = null;
+      renderAll();
+      return;
+    }
+  }
 
   let done = false;
 
@@ -719,6 +842,7 @@ document.addEventListener('pointercancel', () => {
   drag.ghost.remove();
   drag.el.classList.remove('dragging');
   document.querySelectorAll('.droptarget').forEach(el => el.classList.remove('droptarget'));
+  clearJokerHints();
   drag = null;
 });
 
@@ -750,12 +874,13 @@ document.querySelectorAll('.choice .opt').forEach(b => {
     b.classList.add('sel');
     if (b.dataset.ai) aiCount = +b.dataset.ai;
     if (b.dataset.swap !== undefined) swapRule = b.dataset.swap === '1';
+    if (b.dataset.joker !== undefined) jokerRule = b.dataset.joker === '1';
   });
 });
 
 document.getElementById('btn-start').addEventListener('click', () => {
   document.getElementById('overlay').classList.remove('show');
-  newGame(aiCount, swapRule);
+  newGame(aiCount, swapRule, jokerRule);
 });
 
 document.getElementById('btn-again').addEventListener('click', () => {

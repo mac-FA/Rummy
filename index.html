@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Rummy</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='4' width='52' height='56' rx='10' fill='%23f5ecd7'/%3E%3Ctext x='32' y='42' font-family='Georgia' font-size='34' font-weight='bold' fill='%23b23a32' text-anchor='middle'%3E7%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='4' width='52' height='56' rx='10' fill='%23f5ecd7'/%3E%3Ctext x='32' y='42' font-family='Georgia' font-size='34' font-weight='bold' fill='%23b41545' text-anchor='middle'%3E7%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -69,6 +69,11 @@
       <button class="opt wide sel" data-swap="0">Aus</button>
       <button class="opt wide" data-swap="1">An</button>
     </div>
+    <div class="choice">
+      <span>Joker auslösen:</span>
+      <button class="opt wide sel" data-joker="0">Aus</button>
+      <button class="opt wide" data-joker="1">An</button>
+    </div>
     <button id="btn-start" class="primary big">Spiel beginnen</button>
     <details id="rules">
       <summary>Kurzregeln</summary>
@@ -80,6 +85,7 @@
         <li>Kannst oder willst du nicht legen, ziehst du einen Stein.</li>
         <li><b>Tauschregel</b> (Variante): Nach dem Ziehen darfst du einen beliebigen Stein zurück in den Beutel legen.</li>
         <li>Der <b>Joker</b> ersetzt jeden Stein und zählt dessen Wert.</li>
+        <li><b>Joker auslösen</b> (Variante): Hast du bereits ausgelegt, darfst du einen Joker vom Tisch holen, indem du genau den Stein darauf ziehst, für den er eingesprungen ist. Der Joker muss noch im selben Zug wieder auf den Tisch.</li>
         <li>Wer zuerst alle Steine ablegt, gewinnt.</li>
       </ul>
     </details>
@@ -91,6 +97,6 @@
   </div>
 </div>
 
-<script src="game.js?v=4"></script>
+<script src="game.js?v=5"></script>
 </body>
 </html>
